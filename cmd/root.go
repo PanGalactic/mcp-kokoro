@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/charmbracelet/log"
+	"github.com/gopxl/beep/v2"
+	"github.com/gopxl/beep/v2/speaker"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/spf13/cobra"
@@ -72,6 +74,9 @@ func runServer() error {
 		mcp.WithNumber("speed",
 			mcp.Description("Speed of speech (optional, default: 1.0)"),
 		),
+		mcp.WithBoolean("play_audio",
+			mcp.Description("Play audio through speakers (optional, default: true)"),
+		),
 	)
 
 	// Add the tool handler
@@ -93,6 +98,11 @@ func runServer() error {
 		voice := ""
 		if v, ok := arguments["voice"].(string); ok {
 			voice = v
+		}
+
+		playAudio := true
+		if p, ok := arguments["play_audio"].(bool); ok {
+			playAudio = p
 		}
 
 		ttsReq := TTSRequest{
@@ -140,6 +150,40 @@ func runServer() error {
 			return result, nil
 		}
 
+		// Play audio if requested
+		if playAudio {
+			// Create a reader from the audio data
+			reader := bytes.NewReader(audioData)
+			
+			// Decode the WAV data
+			streamer, format, err := DecodeWAV(reader)
+			if err != nil {
+				log.Error("Failed to decode audio", "error", err)
+			} else {
+				// Initialize speaker if not already done
+				speaker.Init(format.SampleRate, format.SampleRate.N(time.Second/10))
+				
+				done := make(chan bool, 1)
+				
+				// Play audio with callback
+				speaker.Play(beep.Seq(streamer, beep.Callback(func() {
+					done <- true
+				})))
+				
+				log.Info("Speaking text via Kokoro", "text", text, "voice", voice)
+				
+				// Wait for either completion or cancellation
+				select {
+				case <-done:
+					log.Debug("Audio playback completed normally")
+				case <-ctx.Done():
+					log.Debug("Context cancelled, stopping audio playback")
+					speaker.Clear()
+					return nil, ctx.Err()
+				}
+			}
+		}
+
 		encoded := base64.StdEncoding.EncodeToString(audioData)
 		
 		return mcp.NewToolResultText(fmt.Sprintf("Audio generated successfully (%d bytes). Base64 encoded audio data:\n%s", len(audioData), encoded)), nil
@@ -156,13 +200,14 @@ func runServer() error {
 		
 		examples := map[string]string{
 			"basic": "Basic usage:\n```json\n{\n  \"text\": \"Hello, this is a test of Kokoro TTS.\"\n}\n```",
-			"voices": "Using different voices:\n```json\n{\n  \"text\": \"Testing different voice options\",\n  \"voice\": \"female_1\"\n}\n```",
+			"voices": "Using different voices:\n```json\n{\n  \"text\": \"Testing different voice options\",\n  \"voice\": \"af_heart\"\n}\n```",
 			"speed": "Adjusting speech speed:\n```json\n{\n  \"text\": \"This text will be spoken at different speeds\",\n  \"speed\": 1.5\n}\n```",
+			"no_play": "Generate without playing:\n```json\n{\n  \"text\": \"Generate audio without playing through speakers\",\n  \"play_audio\": false\n}\n```",
 		}
 
 		content := examples[exampleType]
 		if content == "" {
-			content = examples["basic"] + "\n\n" + examples["voices"] + "\n\n" + examples["speed"]
+			content = examples["basic"] + "\n\n" + examples["voices"] + "\n\n" + examples["speed"] + "\n\n" + examples["no_play"]
 		}
 
 		return mcp.NewGetPromptResult(
