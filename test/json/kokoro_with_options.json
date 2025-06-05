@@ -1,0 +1,8 @@
+{
+  "name": "kokoro_tts",
+  "arguments": {
+    "text": "This message is spoken with custom voice and speed settings.",
+    "voice": "female_1",
+    "speed": 1.5
+  }
+}
