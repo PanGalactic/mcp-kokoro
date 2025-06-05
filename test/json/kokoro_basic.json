@@ -1,6 +1,8 @@
 {
-  "name": "kokoro_tts",
-  "arguments": {
-    "text": "Hello, this is a test of the Kokoro text to speech system."
+  "params": {
+    "name": "kokoro_tts",
+    "arguments": {
+      "text": "Hello, this is a test of the Kokoro text to speech system."
+    }
   }
 }
